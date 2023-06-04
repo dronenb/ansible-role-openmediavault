@@ -1,0 +1,6 @@
+---
+# handlers file for dronenb.openmediavault
+- name: Netplan apply
+  become: true
+  ansible.builtin.command:
+    cmd: /usr/sbin/netplan apply

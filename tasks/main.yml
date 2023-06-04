@@ -1,0 +1,132 @@
+---
+
+- name: OpenMediaVault become block
+  become: true
+  block:
+    - name: Install gnupg
+      ansible.builtin.apt:
+        update_cache: false
+        pkg:
+          - gnupg
+
+    - name: Download OpenMediaVault apt keyring
+      ansible.builtin.get_url:
+        url: https://packages.openmediavault.org/public/archive.key
+        dest: /etc/apt/trusted.gpg.d/openmediavault-archive-keyring.asc
+    
+    - name: Add OpenMediaVault apt repository
+      ansible.builtin.apt_repository:
+        filename: openmediavault
+        repo: >-
+          deb
+          [arch=amd64 signed-by=/etc/apt/trusted.gpg.d/openmediavault-archive-keyring.asc]
+          https://packages.openmediavault.org/public
+          shaitan
+          main
+        state: present
+
+    - name: Install OpenMediaVault
+      ansible.builtin.apt:
+        autoclean: yes
+        autoremove: yes
+        update_cache: true
+        pkg:
+          - openmediavault-keyring
+          - openmediavault
+
+    - name: Create netplan
+      vars:
+        netplan:
+          network:
+            ethernets:
+              eth0:
+                match:
+                  macaddress: "{{ netplan_macaddr }}"
+                addresses:
+                - "{{ansible_host}}/{{netplan_netmask}}"
+                routes:
+                - to: 0.0.0.0/0
+                  via: "{{ netplan_gateway }}"
+                accept-ra: true
+                dhcp4: false
+                dhcp6: true
+                dhcp6-overrides:
+                  use-dns: no
+                nameservers:
+                  addresses:
+                  - "{{ netplan_nameserver }}"
+      ansible.builtin.copy:
+        dest: "/etc/netplan/00-{{ inventory_hostname }}.yaml"
+        content: "{{ netplan | ansible.builtin.to_nice_yaml(indent=2) }}"
+      notify: Netplan apply
+
+    - name: Add local user to appropriate user groups
+      ansible.builtin.user:
+        name: "{{ ansible_user }}"
+        groups: openmediavault-admin,root,sudo,ssh
+        append: yes
+        state: present
+
+    # - name: Add local user to 
+
+    - name: Remove admin user created by OMV
+      ansible.builtin.user:
+        name: admin
+        state: absent
+
+    - name: Check if OMV extras are installed
+      ansible.builtin.shell:
+        cmd: dpkg-query -f '${binary:Package}\n' -W | grep -i openmediavault-omvextras || true
+      register: omv_extras
+      changed_when: false
+
+    - name: Install OMV Extras
+      when: omv_extras.stdout | list | length == 0
+      ansible.builtin.shell:
+        cmd: wget -O - https://github.com/OpenMediaVault-Plugin-Developers/packages/raw/master/install | bash
+
+    - name: Install openmediavault-kernel
+      ansible.builtin.apt:
+        pkg:
+          - openmediavault-kernel
+        state: present
+
+    - name: Check if running Proxmox kernel
+      ansible.builtin.shell:
+        cmd: uname -r | grep -E "pve$" || true
+      register: proxmox_kernel_chk
+      changed_when: false
+
+    - name: Install Proxmox kernel
+      when: proxmox_kernel_chk.stdout | list | length == 0
+      ansible.builtin.shell:
+        cmd: omv-installproxmox
+      register: proxmox_kernel
+
+    - name: Reboot after installing the Proxmox kernel
+      shell: "sleep 5 && reboot"
+      async: 1
+      poll: 0
+      when: proxmox_kernel is changed
+
+    - name: Wait for the reboot to complete if there was a change.
+      wait_for_connection:
+        connect_timeout: 20
+        sleep: 5
+        delay: 5
+        timeout: 300
+      when: proxmox_kernel is changed
+
+    - name: Install zfs packages
+      ansible.builtin.apt:
+        pkg:
+          - openmediavault-zfs
+          - zfs-dkms 
+          - zfs-zed
+          - zfsutils-linux
+        state: present
+
+    - name: Enable zfs modprobe module
+      community.general.modprobe:
+        name: zfs
+        state: present
