@@ -13,7 +13,7 @@
       ansible.builtin.get_url:
         url: https://packages.openmediavault.org/public/archive.key
         dest: /etc/apt/trusted.gpg.d/openmediavault-archive-keyring.asc
-    
+
     - name: Add OpenMediaVault apt repository
       ansible.builtin.apt_repository:
         filename: openmediavault
@@ -27,8 +27,8 @@
 
     - name: Install OpenMediaVault
       ansible.builtin.apt:
-        autoclean: yes
-        autoremove: yes
+        autoclean: true
+        autoremove: true
         update_cache: true
         pkg:
           - openmediavault-keyring
@@ -43,18 +43,18 @@
                 match:
                   macaddress: "{{ netplan_macaddr }}"
                 addresses:
-                - "{{ansible_host}}/{{netplan_netmask}}"
+                  - "{{ ansible_host }}/{{ netplan_netmask }}"
                 routes:
-                - to: 0.0.0.0/0
-                  via: "{{ netplan_gateway }}"
+                  - to: 0.0.0.0/0
+                    via: "{{ netplan_gateway }}"
                 accept-ra: true
                 dhcp4: false
                 dhcp6: true
                 dhcp6-overrides:
-                  use-dns: no
+                  use-dns: false
                 nameservers:
                   addresses:
-                  - "{{ netplan_nameserver }}"
+                    - "{{ netplan_nameserver }}"
       ansible.builtin.copy:
         dest: "/etc/netplan/00-{{ inventory_hostname }}.yaml"
         content: "{{ netplan | ansible.builtin.to_nice_yaml(indent=2) }}"
@@ -64,10 +64,8 @@
       ansible.builtin.user:
         name: "{{ ansible_user }}"
         groups: openmediavault-admin,root,sudo,ssh
-        append: yes
+        append: true
         state: present
-
-    # - name: Add local user to 
 
     - name: Remove admin user created by OMV
       ansible.builtin.user:
@@ -104,13 +102,13 @@
       register: proxmox_kernel
 
     - name: Reboot after installing the Proxmox kernel
-      shell: "sleep 5 && reboot"
+      ansible.builtin.shell: "sleep 5 && reboot"
       async: 1
       poll: 0
       when: proxmox_kernel is changed
 
     - name: Wait for the reboot to complete if there was a change.
-      wait_for_connection:
+      ansible.builtin.wait_for_connection:
         connect_timeout: 20
         sleep: 5
         delay: 5
@@ -121,7 +119,7 @@
       ansible.builtin.apt:
         pkg:
           - openmediavault-zfs
-          - zfs-dkms 
+          - zfs-dkms
           - zfs-zed
           - zfsutils-linux
         state: present

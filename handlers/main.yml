@@ -4,3 +4,4 @@
   become: true
   ansible.builtin.command:
     cmd: /usr/sbin/netplan apply
+  changed_when: true

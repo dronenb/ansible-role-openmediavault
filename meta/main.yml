@@ -13,4 +13,4 @@ galaxy_info:
   galaxy_tags:
     - openmediavault
 dependencies:
-  - dronenb.debian
+  - src: dronenb.debian
